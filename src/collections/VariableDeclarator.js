@@ -15,12 +15,14 @@ var Collection = require('../Collection');
 var NodeCollection = require('./Node');
 var matchNode = require('../matchNode');
 var recast = require('recast');
+var IdentifierCollection = require('./Identifier');
 
 var astNodesAreEquivalent = recast.types.astNodesAreEquivalent;
 var b = recast.types.builders;
 var types = recast.types.namedTypes;
 
 var VariableDeclarator = recast.types.namedTypes.VariableDeclarator;
+var Identifier = recast.types.namedTypes.Identifier;
 
 /**
 * @mixin
@@ -78,61 +80,34 @@ var transformMethods = {
    */
   renameTo: function(newName) {
     // TODO: Include JSXElements
-    return this.forEach(function(path) {
-      var node = path.value;
-      var oldName = node.id.name;
-      var rootScope = path.scope;
-      var rootPath = rootScope.path;
-      Collection.fromPaths([rootPath])
+    return this.forEach(varPath => {
+      const oldName = varPath.node.id.name;
+      Collection.fromPaths([varPath.scope.path])
         .find(types.Identifier, {name: oldName})
-        .filter(function(path) { // ignore non-variables
-          var parent = path.parent.node;
-
-          if (
-            types.MemberExpression.check(parent) &&
-            parent.property === path.node &&
-            !parent.computed
-          ) {
-            // obj.oldName
-            return false;
-          }
-
-          if (
-            types.Property.check(parent) &&
-            parent.key === path.node &&
-            !parent.computed
-          ) {
-            // { oldName: 3 }
-            return false;
-          }
-
-          if (
-            types.MethodDefinition.check(parent) &&
-            parent.key === path.node &&
-            !parent.computed
-          ) {
-            // class A { oldName() {} }
-            return false;
-          }
-
-          return true;
-        })
-        .forEach(function(path) {
-          var scope = path.scope;
-          while (scope && scope !== rootScope) {
-            if (scope.declares(oldName)) {
-              return;
-            }
-            scope = scope.parent;
-          }
-          if (scope) { // identifier must refer to declared variable
-            path.get('name').replace(newName);
-          }
-        });
+        .filter(IdentifierCollection.filters.isDeclaredBy(varPath))
+        .forEach(path => path.get('name').replace(newName));
     });
-  }
-};
+  },
 
+  /**
+   * Removes variable declarators that declare variables which are never
+   * referenced.
+   *
+   * @return {Collection}
+   */
+  removeUnreferenced: function() {
+    return this.filter(varPath => {
+      const isDeclaratorID =
+        IdentifierCollection.filters.isDeclaratorID(varPath);
+      const name = varPath.node.id.name;
+      return 0 === Collection.fromPaths([varPath.scope.path])
+        .find(types.Identifier, {name})
+        .filter(path => !isDeclaratorID(path))
+        .filter(IdentifierCollection.filters.isDeclaredBy(varPath))
+        .size();
+    }).remove();
+  },
+};
 
 function register() {
   NodeCollection.register();

@@ -19,6 +19,7 @@ describe('VariableDeclarators', function() {
   var nodes;
   var Collection;
   var VariableDeclaratorCollection;
+  var jscodeshift;
 
   beforeEach(function() {
     jest.resetModuleRegistry();
@@ -26,6 +27,7 @@ describe('VariableDeclarators', function() {
     Collection = require('../../Collection');
     VariableDeclaratorCollection =  require('../VariableDeclarator');
     VariableDeclaratorCollection.register();
+    jscodeshift = require('../../core');
 
     nodes = [recast.parse([
       'var foo = 42;',
@@ -102,7 +104,7 @@ describe('VariableDeclarators', function() {
     });
   });
 
-  describe('Transform', function() {
+  describe('renameTo', function() {
     it('renames variable declarations considering scope', function() {
       var declarators = Collection.fromNodes(nodes)
         .findVariableDeclarators()
@@ -129,4 +131,154 @@ describe('VariableDeclarators', function() {
     });
   });
 
+  describe('removeUnreferenced', function() {
+    it('deletes unused declarator', () => {
+      const input =
+`var x = 3, y = 4;
+f(y);`;
+
+      const expected =
+`var y = 4;
+f(y);`;
+
+      expect(
+        jscodeshift(input)
+          .findVariableDeclarators()
+          .removeUnreferenced()
+          .toSource()
+      ).toEqual(expected);
+    });
+
+    it('handles function scope', () => {
+      const input =
+`function f() {
+  var x = 3;
+}
+
+function g() {
+  var x = 4;
+  return x;
+}`;
+
+      const expected =
+`function f() {}
+
+function g() {
+  var x = 4;
+  return x;
+}`;
+
+      expect(
+        jscodeshift(input)
+          .findVariableDeclarators()
+          .removeUnreferenced()
+          .toSource()
+      ).toEqual(expected);
+    });
+
+    it('handles nested function scope', () => {
+      const input =
+`var x = 3;
+
+function g() {
+  var x = 4;
+  return x;
+}`;
+
+      const expected =
+`function g() {
+  var x = 4;
+  return x;
+}`;
+
+      expect(
+        jscodeshift(input)
+          .findVariableDeclarators()
+          .removeUnreferenced()
+          .toSource()
+      ).toEqual(expected);
+    });
+
+    // this may fail in the future if ast-types issue 154 is fixed
+    // if so, delete this test
+    it('does not yet handle block scope', () => {
+      const input =
+`if (a) {
+  const x = 3;
+} else if (b) {
+  let x = 4;
+  x += 3;
+}`;
+
+      const expected =
+`if (a) {
+  const x = 3;
+} else if (b) {
+  let x = 4;
+  x += 3;
+}`;
+
+      expect(
+        jscodeshift(input)
+          .findVariableDeclarators()
+          .removeUnreferenced()
+          .toSource()
+      ).toEqual(expected);
+    });
+
+    it('only checks actual variables', () => {
+      const input =
+`var x = 3;
+
+class A { x() {} }
+
+type T = {x: number};
+
+y.x = 5;
+
+function g() {
+  var x = 4;
+  return {x: 3};
+}`;
+
+      const expected =
+`class A { x() {} }
+
+type T = {x: number};
+
+y.x = 5;
+
+function g() {
+  return {x: 3};
+}`;
+
+      expect(
+        jscodeshift(input)
+          .findVariableDeclarators()
+          .removeUnreferenced()
+          .toSource()
+      ).toEqual(expected);
+    });
+
+    it('handles duplicate declarations', () => {
+      const input =
+`var x = 3;
+var x = 4;
+function x() {}
+type x = number;
+class x extends y {}`;
+
+      const expected =
+`function x() {}
+type x = number;
+class x extends y {}`;
+
+      expect(
+        jscodeshift(input)
+          .findVariableDeclarators()
+          .removeUnreferenced()
+          .toSource()
+      ).toEqual(expected);
+    });
+  });
 });
