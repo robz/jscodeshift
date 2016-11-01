@@ -97,8 +97,15 @@ const filterMethods = {
    */
   isDeclaredBy: function(varDeclaratorPath) {
     const isVariable = filterMethods.isVariable();
-    const varDeclaratorScopePath = varDeclaratorPath.scope.path;
     const name = varDeclaratorPath.node.id.name;
+
+    // sometimes the scope of a var doesn't declare it, so traverse up until we
+    // find the "true" scope of the var
+    // (see recast issue #188)
+    let varDeclaratorScope = varDeclaratorPath.scope;
+    while (!varDeclaratorScope.declares(name)) {
+      varDeclaratorScope = varDeclaratorScope.parent;
+    }
 
     return function(identPath) {
       if (!isVariable(identPath)) {
@@ -110,7 +117,7 @@ const filterMethods = {
         scope = scope.parent;
       }
 
-      if (scope.path === varDeclaratorScopePath) {
+      if (scope.path === varDeclaratorScope.path) {
         return true;
       }
 

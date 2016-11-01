@@ -280,5 +280,67 @@ class x extends y {}`;
           .toSource()
       ).toEqual(expected);
     });
+
+    it('does not handle destructuring assignment yet', () => {
+      const input = `var {x} = y;`;
+      const expected = `var {x} = y;`;
+
+      expect(
+        jscodeshift(input)
+          .findVariableDeclarators()
+          .removeUnreferenced()
+          .toSource()
+      ).toEqual(expected);
+    });
+
+    it('handles vars in catch clause', () => {
+      const input =
+`try {
+} catch(e) {
+  var error = 3;
+  error += 3;
+}`;
+
+      const expected =
+`try {
+} catch(e) {
+  var error = 3;
+  error += 3;
+}`;
+
+      expect(
+        jscodeshift(input)
+          .findVariableDeclarators()
+          .removeUnreferenced()
+          .toSource()
+      ).toEqual(expected);
+    });
+
+    // this is a bug, needs to be fixed before shipping removeUnreferenced
+    it('fails to take into account let and const', () => {
+      const input =
+`var x;
+function f() {
+  if (true) {
+    let x = 3;
+  }
+  return x;
+}`;
+
+      const expected =
+`function f() {
+  if (true) {
+    let x = 3;
+  }
+  return x;
+}`;
+
+      expect(
+        jscodeshift(input)
+          .findVariableDeclarators()
+          .removeUnreferenced()
+          .toSource()
+      ).toEqual(expected);
+    });
   });
 });

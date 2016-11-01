@@ -100,6 +100,13 @@ var transformMethods = {
       const isDeclaratorID =
         IdentifierCollection.filters.isDeclaratorID(varPath);
       const name = varPath.node.id.name;
+
+      if (!name) {
+        // declarations with destructuring assignment will not have ids which
+        // are identifiers
+        return false;
+      }
+
       return 0 === Collection.fromPaths([varPath.scope.path])
         .find(types.Identifier, {name})
         .filter(path => !isDeclaratorID(path))
